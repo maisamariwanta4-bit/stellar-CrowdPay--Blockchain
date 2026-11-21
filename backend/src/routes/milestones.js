@@ -3,6 +3,7 @@ const { Keypair } = require('@stellar/stellar-sdk');
 const db = require('../config/database');
 const logger = require('../config/logger');
 const { requireAuth } = require('../middleware/auth');
+const { MILESTONE_LIMIT } = require('../middleware/validation');
 const { sendAlert } = require('../services/alerting');
 const {
   buildWithdrawalTransaction,
@@ -56,8 +57,6 @@ function toReleaseAmount(raisedAmount, releasePercentage) {
   const releasedStroops = (raisedStroops * scaledPct) / 100_000_000n;
   return formatStroops(releasedStroops);
 }
-
-const MILESTONE_LIMIT = 5;
 
 async function logWithdrawalEvent(client, { withdrawalRequestId, actorUserId, action, note, metadata }) {
   await client.query(
@@ -159,6 +158,13 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Milestone release percentages cannot exceed 100% total' });
     }
 
+    const isLastSlot = (stats[0]?.count || 0) + 1 >= MILESTONE_LIMIT;
+    const isFinalAllocation = Math.abs(newTotal - 100) < 0.0001;
+    if (isLastSlot && !isFinalAllocation) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'The final milestone must bring the total release percentage to exactly 100%' });
+    }
+
     const { rows } = await client.query(
       `INSERT INTO milestones (campaign_id, title, description, release_percentage, sort_order)
        VALUES ($1, $2, $3, $4, $5)
@@ -185,7 +191,9 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
   }
 
   const { rows: milestones } = await db.query(
-    `SELECT m.*, c.creator_id, c.status AS campaign_status
+    `SELECT m.*, c.creator_id, c.status AS campaign_status,
+            (SELECT COALESCE(SUM(release_percentage), 0)::numeric
+             FROM milestones WHERE campaign_id = m.campaign_id) AS plan_total
      FROM milestones m
      JOIN campaigns c ON c.id = m.campaign_id
      WHERE m.id = $1`,
@@ -202,6 +210,9 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
   }
   if (milestone.status === 'released') {
     return res.status(409).json({ error: 'This milestone has already been released' });
+  }
+  if (Math.abs(Number(milestone.plan_total) - 100) > 0.0001) {
+    return res.status(409).json({ error: 'Milestone plan is incomplete: release percentages must sum to exactly 100% before a milestone can be submitted' });
   }
 
   const { rows: updated } = await db.query(

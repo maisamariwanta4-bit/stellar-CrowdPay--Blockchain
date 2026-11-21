@@ -23,6 +23,7 @@ const {
   createCampaignValidation,
   getCampaignsValidation,
   validateRequest,
+  MILESTONE_LIMIT,
 } = require('../middleware/validation');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -125,8 +126,6 @@ const upload = multer({
 
 const SUPPORTED_ASSETS = getSupportedAssetCodes();
 const MILESTONE_PERCENT_SCALE = 10000;
-const MILESTONE_LIMIT = 5;
-
 const isTest = process.env.NODE_ENV === 'test';
 
 // Rate limiter for public read-only endpoints (backers, etc.)

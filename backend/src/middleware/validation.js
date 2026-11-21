@@ -20,6 +20,8 @@ const VALID_CATEGORIES = [
 ];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const MILESTONE_LIMIT = 5;
+
 function isUuid(value) {
   return typeof value === 'string' && UUID_PATTERN.test(value);
 }
@@ -164,7 +166,7 @@ const createCampaignValidation = [
     .custom((value) => {
       if (value == null) return true; // eslint-disable-line eqeqeq
       if (!Array.isArray(value)) throw new Error('Milestones must be an array');
-      if (value.length > 10) throw new Error('Campaigns can define at most 10 milestones');
+      if (value.length > MILESTONE_LIMIT) throw new Error(`Campaigns can define at most ${MILESTONE_LIMIT} milestones`);
       for (const [index, milestone] of value.entries()) {
         if (!milestone || typeof milestone !== 'object') {
           throw new Error(`Milestone ${index + 1} must be an object`);
@@ -325,6 +327,7 @@ function validateRequestAsError(req, res, next) {
 module.exports = {
   VALID_CAMPAIGN_STATUSES,
   VALID_ORDER_BY,
+  MILESTONE_LIMIT,
   registerValidation,
   updateUserValidation,
   loginValidation,
